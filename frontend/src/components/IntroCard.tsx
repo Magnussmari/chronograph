@@ -17,6 +17,9 @@ export function IntroCard({ manifest, onDismiss }: IntroCardProps) {
   const oldest = manifest.year_range.oldest;
   const newest = manifest.year_range.newest;
   const span = newest - oldest;
+  // Year slots in the corpus are inclusive at both ends (-3200..2025 = 5,226 files),
+  // so the filed-of-total stamp counts slots, not elapsed years.
+  const slots = span + 1;
 
   return (
     <motion.aside
@@ -73,7 +76,7 @@ export function IntroCard({ manifest, onDismiss }: IntroCardProps) {
       >
         <span className="notebook-stamp">Folio</span>
         <span>
-          Vol. I · {manifest.total_years.toLocaleString()} of {span.toLocaleString()} years filed ·{" "}
+          Vol. I · {manifest.total_years.toLocaleString()} of {slots.toLocaleString()} years filed ·{" "}
           {manifest.total_events.toLocaleString()} events
         </span>
       </div>

@@ -1,83 +1,45 @@
 #!/usr/bin/env bash
 # deploy-edge.sh — ship Chronograph to the sovereign edge (smarason-edge-hel1).
 #
-# Codifies the runbook that previously lived only as prose in
-# Vault-Secrets/Infrastructure/smarason-edge-hel1.md.
-#
 #   timeline.sumarhus.com -> Caddy vhost -> 127.0.0.1:3001 -> container `timeline-app`
-#   compose file: /opt/timeline/docker-compose.yml   image: timeline-edge:v2
-#   source clone: /opt/timeline-src  (git pull from origin/main)
+#   compose file: /opt/timeline/docker-compose.yml   (image tag is read from it)
+#   source clone: /opt/timeline-src  (reset to origin/main)
 #
-# Two things make this fiddly, both handled here:
-#   1. SSH :22 is firewalled to specific /32s, so a temp hcloud rule is added for
-#      the current egress IP and removed again on exit (trap, fires on failure too).
-#   2. next build needs ~4G RAM on a cx23, so a temp swapfile is added and removed.
+# SSH goes over the tailnet via the `smarason-edge-hel1` alias in ~/.ssh/config.
+# (Until 2026-11-17 this script opened a temporary hcloud firewall rule for the
+# public egress IP; that token expired and the tailnet path made it unnecessary.)
+# next build needs ~4G RAM on a cx23, so a temp swapfile is added and removed.
+# The previous image is kept as <tag>-prev for a one-command rollback:
+#   ssh smarason-edge-hel1 'docker tag timeline-edge:v12-prev timeline-edge:v12 && cd /opt/timeline && docker compose up -d --force-recreate'
 #
 # Usage:  scripts/deploy-edge.sh [--dry-run]
 set -euo pipefail
 
 SERVER="smarason-edge-hel1"
-FIREWALL="smarason-edge-fw"
-VAULT_HETZNER="$HOME/Vault-Secrets/Infrastructure/hetzner-access.md"
 DRY_RUN="${1:-}"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
-# --- credentials -------------------------------------------------------------
-# The vault table uses non-breaking spaces, so parse with python not sed.
-HCLOUD_TOKEN="$(python3 -c "
-import re,sys
-t=open('$VAULT_HETZNER').read()
-m=re.search(r'HCLOUD_TOKEN_RW\`?[^|]*\|[^\`]*\`([^\`]+)\`', t)
-sys.exit('no HCLOUD_TOKEN_RW in vault') if not m else print(m.group(1))
-")"
-export HCLOUD_TOKEN
-
-MY_IP="$(curl -fsS ifconfig.me)"
-log "egress IP: $MY_IP"
-
-# --- preflight: never deploy an unbuilt or dirty tree -------------------------
+# --- preflight: never deploy an unbuilt, dirty or unpushed tree ----------------
 log "preflight"
-git -C "$(dirname "$0")/.." diff --quiet || { echo "working tree dirty — commit first"; exit 1; }
-LOCAL_SHA="$(git -C "$(dirname "$0")/.." rev-parse --short HEAD)"
+ROOT="$(dirname "$0")/.."
+git -C "$ROOT" diff --quiet || { echo "working tree dirty — commit first"; exit 1; }
+git -C "$ROOT" fetch --quiet origin main
+LOCAL_SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
+REMOTE_SHA="$(git -C "$ROOT" rev-parse --short origin/main)"
+[[ "$LOCAL_SHA" == "$REMOTE_SHA" ]] || { echo "HEAD $LOCAL_SHA != origin/main $REMOTE_SHA — push first (the server builds origin/main)"; exit 1; }
 echo "deploying $LOCAL_SHA"
+
+ssh -o ConnectTimeout=10 "$SERVER" true || { echo "cannot reach $SERVER over ssh alias (tailnet up?)"; exit 1; }
 
 if [[ "$DRY_RUN" == "--dry-run" ]]; then
   log "dry run — stopping before any remote change"
   exit 0
 fi
 
-# --- temp SSH access ---------------------------------------------------------
-RULE_ADDED=0
-cleanup() {
-  if [[ "$RULE_ADDED" == "1" ]]; then
-    log "removing temp firewall rule for $MY_IP"
-    # Re-apply the rule set without our /32. hcloud has no per-rule delete, so
-    # replace_rules with the saved baseline.
-    hcloud firewall replace-rules "$FIREWALL" --rules-file /tmp/fw-baseline.json >/dev/null \
-      && echo "firewall restored" || echo "WARNING: firewall NOT restored — check manually"
-  fi
-}
-trap cleanup EXIT
-
-log "saving firewall baseline + opening :22 for $MY_IP"
-hcloud firewall describe "$FIREWALL" -o json | python3 -c "
-import json,sys
-fw=json.load(sys.stdin)
-json.dump(fw['rules'], open('/tmp/fw-baseline.json','w'), indent=2)
-rules=fw['rules']
-rules.append({'direction':'in','protocol':'tcp','port':'22',
-              'source_ips':['$MY_IP/32'],'destination_ips':[],
-              'description':'temp deploy access'})
-json.dump(rules, open('/tmp/fw-deploy.json','w'), indent=2)
-"
-hcloud firewall replace-rules "$FIREWALL" --rules-file /tmp/fw-deploy.json >/dev/null
-RULE_ADDED=1
-echo "SSH open"
-
 # --- remote build + restart --------------------------------------------------
 log "remote: pull, build, restart"
-ssh -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new "root@$SERVER" bash -euo pipefail <<'REMOTE'
+ssh -o ConnectTimeout=20 "$SERVER" bash -euo pipefail <<'REMOTE'
   cd /opt/timeline-src
   git fetch --quiet origin main
   git reset --hard origin/main
@@ -100,6 +62,8 @@ ssh -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new "root@$SERVER" bash
   IMAGE=$(grep -E '^\s*image:' /opt/timeline/docker-compose.yml | head -1 | sed -E 's/.*image:\s*//; s/["'"'"']//g')
   echo "compose image: $IMAGE"
 
+  docker image inspect "$IMAGE" >/dev/null 2>&1 && docker tag "$IMAGE" "${IMAGE}-prev"
+
   cd /opt/timeline-src/frontend
   docker build -q -t "$IMAGE" .
 
@@ -110,7 +74,7 @@ REMOTE
 
 # --- verify ------------------------------------------------------------------
 log "waiting for healthy container"
-ssh "root@$SERVER" 'for i in $(seq 1 30); do
+ssh "$SERVER" 'for i in $(seq 1 30); do
   s=$(docker inspect -f "{{.State.Health.Status}}" timeline-app 2>/dev/null || echo none)
   [ "$s" = healthy ] && { echo healthy; exit 0; }
   sleep 4

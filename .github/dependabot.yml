@@ -1,0 +1,17 @@
+# Security + freshness watch for the live site (timeline.sumarhus.com).
+# Added 2026-11-17 after Next sat 3 months behind two advisories unnoticed.
+# Uptime/content is watched separately by flotavakt (5 min, ntfy).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      next:
+        patterns: ["next", "eslint-config-next", "@next/*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+        exclude-patterns: ["next", "eslint-config-next", "@next/*"]
