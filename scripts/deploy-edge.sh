@@ -7,7 +7,8 @@
 #
 # SSH goes over the tailnet via the `smarason-edge-hel1` alias in ~/.ssh/config.
 # (Until 2026-11-17 this script opened a temporary hcloud firewall rule for the
-# public egress IP; that token expired and the tailnet path made it unnecessary.)
+# public egress IP; the tailnet path made that unnecessary, and the RW token now
+# lives in the macOS keychain rather than the vault note the script parsed.)
 # next build needs ~4G RAM on a cx23, so a temp swapfile is added and removed.
 # The previous image is kept as <tag>-prev for a one-command rollback:
 #   ssh smarason-edge-hel1 'docker tag timeline-edge:v12-prev timeline-edge:v12 && cd /opt/timeline && docker compose up -d --force-recreate'

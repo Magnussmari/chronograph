@@ -15,6 +15,14 @@ export interface UpdateEntry {
 // Newest first. Append new entries at the top.
 export const UPDATES: UpdateEntry[] = [
   {
+    date: "2026-11-17",
+    version: "maintenance",
+    title: "Security update and a corrected folio count",
+    body:
+      "The frontend moved to Next.js 16.4.6, which covers two published framework advisories. The folio stamp on the front page now reads **5,226 of 5,226 years filed**; it previously compared the number of year files with the elapsed span and showed 5,226 of 5,225. Dependency and security alerts now run weekly on the repository, so framework updates no longer wait for someone to look.",
+    tags: ["maintenance", "security"],
+  },
+  {
     date: "2026-08-01",
     version: "open call",
     title: "Translations are up for grabs",

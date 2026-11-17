@@ -26,6 +26,12 @@ Active sprinting is paused. The corpus validates 100%, the site is live and stab
 | **Publishing migrated era dossiers** | 8 dossiers schema-valid but unpublished; needs a `phase2-migrated` UI treatment + editorial review | `evidence-layer/…/migrated-v1/MIGRATION-NOTES.md` |
 | **Re-research of eras 05–08, 12** | Pre-schema files lack per-paper metrics; needs fresh Scite runs | same MIGRATION-NOTES |
 
+**Operations (updated 2026-11-17).** The site stays parked for content but is kept current:
+
+- **Deploy:** `scripts/deploy-edge.sh` — reaches `smarason-edge-hel1` over the tailnet SSH alias, refuses an unpushed HEAD, builds `origin/main` on the server, keeps the previous image as `<tag>-prev` for rollback, and verifies health, routes and the live era-index payload.
+- **Dependencies:** Dependabot (`.github/dependabot.yml`) checks `frontend/` weekly with Next.js grouped in one PR; GitHub security alerts and automated security fixes are on. To ship one: merge the PR, then run the deploy script.
+- **Uptime:** watched every 5 minutes by the Sumarhús fleet monitor (content anchor + container count), alerting on state change.
+
 ---
 
 ## Three layers, one folio
