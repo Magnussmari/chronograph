@@ -47,7 +47,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/d3-array": "^3.2.2",
     "@types/d3-geo": "^3.1.0",
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/topojson-client": "^3.1.5",
